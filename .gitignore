@@ -402,5 +402,6 @@ FodyWeavers.xsd
 
 Thumbs.db
 .env
-ExampleReview.json
+*.json
 *.txt
+config.json!
