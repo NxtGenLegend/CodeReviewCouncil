@@ -1,0 +1,14 @@
+{
+  "model": "claude-3-5-haiku-20241022",
+  "temperature": 0.3,
+  "max_tokens": 4096,
+  "file_extensions": [".py", ".js", ".java", ".cpp", ".c", ".cs", ".go", ".rb", ".php"],
+  "output_format": "json",
+  "enable_agents": {
+    "security": true,
+    "performance": true,
+    "architecture": true,
+    "testing": true,
+    "documentation": true
+  }
+}

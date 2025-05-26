@@ -399,3 +399,8 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+Thumbs.db
+.env
+ExampleReview.json
+*.txt
