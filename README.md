@@ -1,6 +1,6 @@
 # Code Review Council - Powered by Claude Haiku 3.5
 
-An AI-powered code review system using Claude Haiku 3.5 with 5 specialized agents.
+An agentic code review system using Claude Haiku 3.5 with 5 specialized agents.
 
 ## What You Need
 
