@@ -16,7 +16,7 @@ def main():
         return
     
     print(f"\n📂 Reading {code_file}...")
-    with open(code_file, 'r') as f:
+    with open(code_file, 'r', encoding='utf-8', errors='ignore') as f:
         code = f.read()
     
     print(f"📏 File size: {len(code.splitlines())} lines")

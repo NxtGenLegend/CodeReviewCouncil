@@ -34,12 +34,8 @@ class BaseAgent(ABC):
                 ]
             )
             
-            # Get the text content - the API returns a list of content blocks
-            # For a text-only response, we just need the first block's text
             if message.content and len(message.content) > 0:
-                # Access the first content block and get its text
                 content_block = message.content[0]
-                # The content block should have a text attribute
                 feedback = getattr(content_block, 'text', str(content_block))
             else:
                 feedback = "No response generated."
