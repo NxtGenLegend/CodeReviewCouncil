@@ -2,6 +2,53 @@ import os
 import json
 from typing import Dict, Any
 
+def extract_key_finding(feedback: str) -> str:
+    """Extract the most important finding from feedback"""
+    if not feedback:
+        return "No issues found"
+    
+    lines = feedback.split('\n')
+    
+    for line in lines:
+        stripped = line.strip()
+        if stripped and len(stripped) > 10:
+            # Skip generic introductions
+            generic_starts = [
+                "after a comprehensive",
+                "here's a comprehensive", 
+                "here are the",
+                "comprehensive analysis",
+                "following review",
+                "based on analysis"
+            ]
+            
+            if any(start in stripped.lower() for start in generic_starts):
+                continue
+                
+            if any(word in stripped.lower() for word in ['found', 'identified', 'detected', 'issue', 'vulnerability', 'problem']):
+                # Clean up and return
+                finding = stripped
+                if len(finding) > 80:
+                    finding = finding[:77] + "..."
+                return finding
+            
+            if len(stripped) > 2 and stripped[0].isdigit() and stripped[1] in '.):':
+                finding = stripped.split('.', 1)[1].strip() if '.' in stripped else stripped
+                if len(finding) > 80:
+                    finding = finding[:77] + "..."
+                return finding
+    
+    for line in lines:
+        stripped = line.strip()
+        if stripped and len(stripped) > 10:
+            generic_starts = ["after", "here's", "comprehensive", "following", "based on"]
+            if not any(stripped.lower().startswith(start) for start in generic_starts):
+                if len(stripped) > 80:
+                    return stripped[:77] + "..."
+                return stripped
+    
+    return "Multiple issues identified"
+
 def count_issues_in_feedback(feedback: str) -> int:
     """Count number of distinct issues mentioned in feedback"""
     if not feedback:
@@ -10,21 +57,16 @@ def count_issues_in_feedback(feedback: str) -> int:
     lines = feedback.split('\n')
     issue_count = 0
     
-    # Look for numbered items (1., 2., etc.) or bullet points
     for line in lines:
         stripped = line.strip()
         if stripped:
-            # Check for numbered lists (1., 2., etc.)
             if len(stripped) > 2 and stripped[0].isdigit() and stripped[1] in '.):':
                 issue_count += 1
-            # Check for bullet points
             elif stripped.startswith(('-', '•', '*', '►')):
                 issue_count += 1
-            # Check for specific patterns like "Issue:" or "Problem:"
             elif any(pattern in stripped.lower() for pattern in ['issue:', 'problem:', 'vulnerability:', 'gap:', 'missing:']):
                 issue_count += 1
     
-    # If no specific patterns found but feedback exists, count as at least 1
     return max(issue_count, 1) if feedback.strip() else 0
 
 def ensure_api_key():
@@ -77,7 +119,6 @@ def analyze_severity(feedback: str) -> Dict[str, int]:
     """Analyze feedback text for severity indicators"""
     feedback_lower = feedback.lower()
     
-    # Keywords that indicate different severity levels
     critical_keywords = ['critical', 'severe', 'vulnerability', 'injection', 'hardcoded', 'plain text']
     warning_keywords = ['warning', 'issue', 'problem', 'inefficient', 'missing']
     suggestion_keywords = ['suggestion', 'recommend', 'consider', 'improve', 'enhancement']
@@ -88,7 +129,6 @@ def analyze_severity(feedback: str) -> Dict[str, int]:
         'suggestion': 0
     }
     
-    # Count occurrences
     for keyword in critical_keywords:
         if keyword in feedback_lower:
             severity['critical'] += 1
@@ -104,7 +144,6 @@ def analyze_severity(feedback: str) -> Dict[str, int]:
             severity['suggestion'] += 1
             break
     
-    # Default to suggestion if no keywords found
     if sum(severity.values()) == 0:
         severity['suggestion'] = 1
     

@@ -9,6 +9,8 @@ from PerformanceAgent import PerformanceAgent
 from ArchitectureAgent import ArchitectureAgent
 from TestingAgent import TestingAgent
 from DocumentationAgent import DocumentationAgent
+from SyntaxLogicAgent import SyntaxLogicAgent
+from utils import analyze_severity, count_issues_in_feedback
 
 def load_config():
     config_path = "config.json"
@@ -27,6 +29,8 @@ class CodeReviewCouncil:
         enable_agents = self.config.get("enable_agents", {})
         
         self.agents = []
+        if enable_agents.get("syntax", True):
+            self.agents.append(SyntaxLogicAgent(self.config))
         if enable_agents.get("security", True):
             self.agents.append(SecurityAgent(self.config))
         if enable_agents.get("performance", True):
@@ -56,7 +60,6 @@ class CodeReviewCouncil:
         print(f"\n🔍 Starting code review for: {filename}")
         print("=" * 60)
         
-        # Add line numbers for reference
         numbered_code, line_map = self.add_line_numbers(code)
         
         results = {
@@ -69,11 +72,11 @@ class CodeReviewCouncil:
                 "total_issues": 0,
                 "critical_issues": 0,
                 "warnings": 0,
-                "suggestions": 0
+                "suggestions": 0,
+                "by_agent": {}
             }
         }
         
-        # Progress bar setup
         total_agents = len(self.agents)
         
         for idx, agent in enumerate(self.agents, 1):
@@ -84,15 +87,22 @@ class CodeReviewCouncil:
                 review = agent.review(code)
                 results["reviews"].append(review)
                 
-                # Update summary counts (simplified for now)
-                if "critical" in review.get("feedback", "").lower():
-                    results["summary"]["critical_issues"] += 1
-                elif "warning" in review.get("feedback", "").lower():
-                    results["summary"]["warnings"] += 1
-                else:
-                    results["summary"]["suggestions"] += 1
+                # Analyze severity of feedback
+                severity = analyze_severity(review.get("feedback", ""))
+                results["summary"]["critical_issues"] += severity.get("critical", 0)
+                results["summary"]["warnings"] += severity.get("warning", 0)
+                results["summary"]["suggestions"] += severity.get("suggestion", 0)
+                results["summary"]["total_issues"] += sum(severity.values())
                 
-                results["summary"]["total_issues"] += 1
+                # Count issues by agent type
+                agent_type = agent.name.replace(" Agent", "")
+                if agent_type not in results["summary"]["by_agent"]:
+                    results["summary"]["by_agent"][agent_type] = 0
+                
+                # Count number of issues found
+                feedback = review.get("feedback", "")
+                issue_count = count_issues_in_feedback(feedback)
+                results["summary"]["by_agent"][agent_type] = issue_count
                 
             except Exception as e:
                 results["reviews"].append({
@@ -112,7 +122,7 @@ class CodeReviewCouncil:
             json.dump(results, f, indent=2)
         print(f"📄 JSON results saved to: {output_file}")
     
-    def save_readable_report(self, results: Dict[str, Any], output_file:  Optional[str] = None):
+    def save_readable_report(self, results: Dict[str, Any], output_file: Optional[str] = None):
         """Save human-readable report as text file"""
         if not output_file:
             base_name = os.path.splitext(results["filename"])[0]
@@ -120,7 +130,6 @@ class CodeReviewCouncil:
             output_file = f"{base_name}_review_{timestamp}.txt"
         
         with open(output_file, 'w', encoding='utf-8') as f:
-            # Header
             f.write("=" * 80 + "\n")
             f.write("CODE REVIEW REPORT\n")
             f.write("=" * 80 + "\n\n")
@@ -130,23 +139,27 @@ class CodeReviewCouncil:
             f.write("Model: Claude 3.5 Haiku\n")
             f.write("\n" + "=" * 80 + "\n\n")
             
-            # Code with line numbers
             f.write("ORIGINAL CODE (with line numbers):\n")
             f.write("-" * 80 + "\n")
             f.write(results.get("numbered_code", "Code not available"))
             f.write("\n\n" + "=" * 80 + "\n\n")
             
-            # Summary
             summary = results.get("summary", {})
             f.write("SUMMARY:\n")
             f.write("-" * 80 + "\n")
-            f.write(f"Total Issues Found: {summary.get('total_issues', 0)}\n")
-            f.write(f"Critical Issues: {summary.get('critical_issues', 0)}\n")
-            f.write(f"Warnings: {summary.get('warnings', 0)}\n")
-            f.write(f"Suggestions: {summary.get('suggestions', 0)}\n")
+            f.write(f"Total Issues Found: {summary.get('total_issues', 0)}\n\n")
+            
+            f.write("Issues by Type:\n")
+            by_agent = summary.get("by_agent", {})
+            for agent_type, count in by_agent.items():
+                f.write(f"  • {agent_type}: {count} issues\n")
+            
+            f.write("\nSeverity Breakdown:\n")
+            f.write(f"  • Critical Issues: {summary.get('critical_issues', 0)}\n")
+            f.write(f"  • Warnings: {summary.get('warnings', 0)}\n")
+            f.write(f"  • Suggestions: {summary.get('suggestions', 0)}\n")
             f.write("\n" + "=" * 80 + "\n\n")
             
-            # Detailed reviews from each agent
             f.write("DETAILED ANALYSIS:\n")
             f.write("=" * 80 + "\n\n")
             
@@ -159,18 +172,14 @@ class CodeReviewCouncil:
                     f.write(f"[{review['agent'].upper()}]\n")
                     f.write("-" * 80 + "\n")
                     
-                    # Format the feedback with proper line wrapping
                     feedback = review.get('feedback', 'No feedback available')
                     
-                    # Split feedback into paragraphs and wrap each
                     paragraphs = feedback.split('\n\n')
                     for paragraph in paragraphs:
                         if paragraph.strip():
-                            # Handle code blocks specially
                             if '```' in paragraph:
                                 f.write(paragraph + "\n\n")
                             else:
-                                # Wrap normal text
                                 wrapped = textwrap.fill(paragraph, width=80, 
                                                        break_long_words=False,
                                                        break_on_hyphens=False)
@@ -178,7 +187,6 @@ class CodeReviewCouncil:
                     
                     f.write("\n" + "=" * 80 + "\n\n")
             
-            # Footer
             f.write("END OF REPORT\n")
             f.write("=" * 80 + "\n")
         
@@ -191,22 +199,33 @@ class CodeReviewCouncil:
         print("📊 REVIEW SUMMARY")
         print("=" * 60)
         
-        # Summary stats
         summary = results.get("summary", {})
-        print("\n📈 Issues Found:")
-        print(f"   • Total Issues: {summary.get('total_issues', 0)}")
+        print(f"\n📈 Total Issues Found: {summary.get('total_issues', 0)}")
+        
+        print("\n🔍 Issues by Type:")
+        by_agent = summary.get("by_agent", {})
+        for agent_type, count in by_agent.items():
+            icon = {
+                "Security": "🔒",
+                "Performance": "⚡",
+                "Architecture": "🏗️",
+                "Testing": "🧪",
+                "Documentation": "📝"
+            }.get(agent_type, "•")
+            print(f"   {icon} {agent_type}: {count} issues")
+        
+        print("\n⚠️  Severity Breakdown:")
         print(f"   • Critical: {summary.get('critical_issues', 0)} 🔴")
         print(f"   • Warnings: {summary.get('warnings', 0)} 🟡")
         print(f"   • Suggestions: {summary.get('suggestions', 0)} 🟢")
         
-        # Quick summary from each agent (just the first line or key finding)
-        print("\n🔍 Key Findings by Agent:")
+        print("\n💡 Key Findings:")
         for review in results["reviews"]:
             if "error" not in review:
                 agent_name = review['agent']
                 feedback = review.get('feedback', '')
-                # Get first significant line from feedback
-                first_line = feedback.split('\n')[0][:60] + "..." if feedback else "No issues found"
+                lines = [line.strip() for line in feedback.split('\n') if line.strip()]
+                first_line = lines[0][:60] + "..." if lines else "No issues found"
                 print(f"   • {agent_name}: {first_line}")
         
         print("\n" + "=" * 60)
