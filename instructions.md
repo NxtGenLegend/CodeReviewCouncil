@@ -56,14 +56,32 @@ python BatchReview.py /path/to/your/project
 ## What Happens
 
 1. The system reads your code file
-2. Each of the 5 agents analyzes it:
+2. Shows a progress bar as each agent analyzes:
+   - Syntax & Logic Agent → finds bugs and logic errors
    - Security Agent → finds vulnerabilities
    - Performance Agent → finds slow code
    - Architecture Agent → checks design
    - Testing Agent → suggests tests
    - Documentation Agent → improves docs
-3. You see a summary of all findings
-4. Optionally save results as JSON
+3. Terminal shows only a brief summary
+4. Save detailed analysis to a .txt file (recommended)
+5. Optionally also save raw data as JSON
+
+## What You'll See
+
+**Terminal (Clean & Informative):**
+- Progress bar during analysis
+- Total issues found
+- Breakdown by type (Syntax: 3, Security: 3, Performance: 2, etc.)
+- Breakdown by severity (Critical/Warning/Suggestion)
+- Actual findings from each agent (not generic text)
+
+**Text Report File (Full Details):**
+- Your code with line numbers
+- Complete analysis from each agent
+- Specific line references (e.g., "Line 2: SQL injection")
+- Code examples and fixes
+- Formatted for easy reading
 
 ## Files You Can Review
 

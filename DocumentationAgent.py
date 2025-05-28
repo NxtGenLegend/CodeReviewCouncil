@@ -9,17 +9,25 @@ class DocumentationAgent(BaseAgent):
         )
     
     def get_prompt(self, code: str) -> str:
-        return f"""Review and generate documentation for this code:
+        return f"""Review this code for documentation issues:
 
 {code}
 
-Focus on:
-1. Missing or unclear function/class documentation
-2. API documentation needs
-3. Complex logic that needs explanation
-4. Architecture decisions that should be documented
-5. Usage examples needed
-6. Parameter and return value documentation
-7. Error states and exceptions
+Focus ONLY on significant documentation problems:
+1. Missing docstrings for complex functions/classes
+2. Incorrect or misleading documentation
+3. Missing parameter/return type documentation for public APIs
+4. Undocumented exceptions or side effects
+5. Complex logic without explanatory comments
 
-Provide specific documentation improvements and generate missing docs."""
+DO NOT report on:
+- Simple getter/setter methods
+- Self-explanatory variable names
+- Minor formatting preferences
+
+If documentation is adequate, simply state "Documentation is adequate."
+
+For each issue found, specify:
+- The line number
+- What documentation is missing or wrong
+- A brief suggestion for improvement"""

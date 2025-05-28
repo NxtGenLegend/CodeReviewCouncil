@@ -3,7 +3,6 @@ from CodeReviewCouncil import CodeReviewCouncil
 from utils import ensure_api_key
 
 def main():
-    # Check API key first
     if not ensure_api_key():
         return
     
@@ -16,28 +15,26 @@ def main():
         return
     
     print(f"\n📂 Reading {code_file}...")
-    with open(code_file, 'r', encoding='utf-8', errors='ignore') as f:
+    with open(code_file, 'r') as f:
         code = f.read()
     
     print(f"📏 File size: {len(code.splitlines())} lines")
     
-    # Run the review
     results = council.review_code(code, os.path.basename(code_file))
     
-    # Print summary only
     council.print_summary(results)
     
-    # Save options
     print("\n💾 Save Options:")
     save_txt = input("Save detailed report as .txt? (y/n): ").strip().lower()
     
     if save_txt == 'y':
         txt_file = council.save_readable_report(results)
-        print(f"\n✨ Success! Full review saved to: {txt_file}")
-        print("   Open this file to see detailed analysis with:")
-        print("   • Line-by-line code references")
-        print("   • Specific recommendations")
-        print("   • Code examples and fixes")
+        print(f"\n✨ Success! Review saved to: {txt_file}")
+        print("   Contains:")
+        print("   • Summary of issues found")
+        print("   • Detailed findings by agent")
+        print("   • Line-specific references")
+        print("   • Recommended fixes")
     
     save_json = input("\nAlso save raw data as JSON? (y/n): ").strip().lower()
     if save_json == 'y':

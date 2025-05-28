@@ -2,73 +2,6 @@ import os
 import json
 from typing import Dict, Any
 
-def extract_key_finding(feedback: str) -> str:
-    """Extract the most important finding from feedback"""
-    if not feedback:
-        return "No issues found"
-    
-    lines = feedback.split('\n')
-    
-    for line in lines:
-        stripped = line.strip()
-        if stripped and len(stripped) > 10:
-            # Skip generic introductions
-            generic_starts = [
-                "after a comprehensive",
-                "here's a comprehensive", 
-                "here are the",
-                "comprehensive analysis",
-                "following review",
-                "based on analysis"
-            ]
-            
-            if any(start in stripped.lower() for start in generic_starts):
-                continue
-                
-            if any(word in stripped.lower() for word in ['found', 'identified', 'detected', 'issue', 'vulnerability', 'problem']):
-                # Clean up and return
-                finding = stripped
-                if len(finding) > 80:
-                    finding = finding[:77] + "..."
-                return finding
-            
-            if len(stripped) > 2 and stripped[0].isdigit() and stripped[1] in '.):':
-                finding = stripped.split('.', 1)[1].strip() if '.' in stripped else stripped
-                if len(finding) > 80:
-                    finding = finding[:77] + "..."
-                return finding
-    
-    for line in lines:
-        stripped = line.strip()
-        if stripped and len(stripped) > 10:
-            generic_starts = ["after", "here's", "comprehensive", "following", "based on"]
-            if not any(stripped.lower().startswith(start) for start in generic_starts):
-                if len(stripped) > 80:
-                    return stripped[:77] + "..."
-                return stripped
-    
-    return "Multiple issues identified"
-
-def count_issues_in_feedback(feedback: str) -> int:
-    """Count number of distinct issues mentioned in feedback"""
-    if not feedback:
-        return 0
-    
-    lines = feedback.split('\n')
-    issue_count = 0
-    
-    for line in lines:
-        stripped = line.strip()
-        if stripped:
-            if len(stripped) > 2 and stripped[0].isdigit() and stripped[1] in '.):':
-                issue_count += 1
-            elif stripped.startswith(('-', '•', '*', '►')):
-                issue_count += 1
-            elif any(pattern in stripped.lower() for pattern in ['issue:', 'problem:', 'vulnerability:', 'gap:', 'missing:']):
-                issue_count += 1
-    
-    return max(issue_count, 1) if feedback.strip() else 0
-
 def ensure_api_key():
     """Check if API key is configured"""
     api_key = os.getenv("ANTHROPIC_API_KEY")
@@ -148,3 +81,68 @@ def analyze_severity(feedback: str) -> Dict[str, int]:
         severity['suggestion'] = 1
     
     return severity
+
+def count_issues_in_feedback(feedback: str) -> int:
+    """Count number of distinct issues mentioned in feedback"""
+    if not feedback:
+        return 0
+    
+    lines = feedback.split('\n')
+    issue_count = 0
+    
+    for line in lines:
+        stripped = line.strip()
+        if stripped:
+            if len(stripped) > 2 and stripped[0].isdigit() and stripped[1] in '.):':
+                issue_count += 1
+            elif stripped.startswith(('-', '•', '*', '►')):
+                issue_count += 1
+            elif any(pattern in stripped.lower() for pattern in ['issue:', 'problem:', 'vulnerability:', 'gap:', 'missing:']):
+                issue_count += 1
+    
+    return max(issue_count, 1) if feedback.strip() else 0
+
+def extract_key_finding(feedback: str) -> str:
+    """Extract the most important finding from feedback"""
+    if not feedback:
+        return "No issues found"
+    
+    lines = feedback.split('\n')
+    
+    for line in lines:
+        stripped = line.strip()
+        if stripped and len(stripped) > 10:
+            generic_starts = [
+                "after a comprehensive",
+                "here's a comprehensive", 
+                "here are the",
+                "comprehensive analysis",
+                "following review",
+                "based on analysis"
+            ]
+            
+            if any(start in stripped.lower() for start in generic_starts):
+                continue
+                
+            if any(word in stripped.lower() for word in ['found', 'identified', 'detected', 'issue', 'vulnerability', 'problem']):
+                finding = stripped
+                if len(finding) > 80:
+                    finding = finding[:77] + "..."
+                return finding
+            
+            if len(stripped) > 2 and stripped[0].isdigit() and stripped[1] in '.):':
+                finding = stripped.split('.', 1)[1].strip() if '.' in stripped else stripped
+                if len(finding) > 80:
+                    finding = finding[:77] + "..."
+                return finding
+    
+    for line in lines:
+        stripped = line.strip()
+        if stripped and len(stripped) > 10:
+            generic_starts = ["after", "here's", "comprehensive", "following", "based on"]
+            if not any(stripped.lower().startswith(start) for start in generic_starts):
+                if len(stripped) > 80:
+                    return stripped[:77] + "..."
+                return stripped
+    
+    return "Multiple issues identified"

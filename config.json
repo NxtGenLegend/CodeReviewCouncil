@@ -5,6 +5,7 @@
   "file_extensions": [".py", ".js", ".java", ".cpp", ".c", ".cs", ".go", ".rb", ".php"],
   "output_format": "json",
   "enable_agents": {
+    "syntax": true,
     "security": true,
     "performance": true,
     "architecture": true,

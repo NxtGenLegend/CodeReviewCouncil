@@ -9,17 +9,25 @@ class TestingAgent(BaseAgent):
         )
     
     def get_prompt(self, code: str) -> str:
-        return f"""Analyze this code from a testing perspective:
+        return f"""Analyze this code for critical testing gaps:
 
 {code}
 
-Focus on:
-1. Missing test cases
-2. Edge cases not covered
-3. Test coverage gaps
-4. Testability issues
-5. Mock/stub requirements
-6. Integration test needs
-7. Error handling validation
+Focus ONLY on significant testing issues:
+1. Untested edge cases that could cause failures
+2. Missing validation for critical functions
+3. Error handling that needs testing
+4. Security-critical code without tests
+5. Complex logic without test coverage
 
-Generate specific test cases and identify testing gaps."""
+DO NOT report on:
+- Simple getter/setter testing
+- Basic CRUD operations
+- Trivial functions
+
+If testing needs are minimal, state "Basic testing adequate for this code."
+
+For each critical gap, specify:
+- What needs testing (with line reference)
+- Why it's important to test
+- One specific test case example"""

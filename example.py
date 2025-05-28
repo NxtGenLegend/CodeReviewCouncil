@@ -9,7 +9,7 @@ def process_user_data(user_input, db_connection):
     for i in range(len(user_data)):
         for j in range(i+1, len(user_data)):
             if user_data[i]['email'] == user_data[j]['email']:
-                user_data.remove(user_data[j])
+                user_data.remove(user_data[j]) 
     
     return user_data
 
@@ -31,3 +31,6 @@ class UserManager:
     
     def get_all_users(self):
         return self.users
+    
+    def delete_user(self, username):
+        self.users = [u for u in self.users if u['username'] != username]
