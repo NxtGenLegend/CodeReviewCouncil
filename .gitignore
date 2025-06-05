@@ -403,5 +403,6 @@ FodyWeavers.xsd
 .env
 *.json
 *.txt
-config.json!
+!config.json
+!requirements.txt
 ProjectSubmission.md

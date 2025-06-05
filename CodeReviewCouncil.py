@@ -1,121 +1,99 @@
 import json
 import os
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional
 from datetime import datetime
+import time
 
-from SecurityAgent import SecurityAgent
-from PerformanceAgent import PerformanceAgent
-from ArchitectureAgent import ArchitectureAgent
-from TestingAgent import TestingAgent
-from DocumentationAgent import DocumentationAgent
-from SyntaxLogicAgent import SyntaxLogicAgent
-from utils import analyze_severity, count_issues_in_feedback, extract_key_finding
-
-def load_config():
-    config_path = "config.json"
-    if os.path.exists(config_path):
-        with open(config_path, 'r') as f:
-            return json.load(f)
-    return {
-        "model": "claude-3-5-haiku-20241022",
-        "temperature": 0.3,
-        "max_tokens": 4096
-    }
+from ReviewGraph import CodeReviewGraph
+from ReviewState import ReviewState
 
 class CodeReviewCouncil:
     def __init__(self):
-        self.config = load_config()
-        enable_agents = self.config.get("enable_agents", {})
-        
-        self.agents = []
-        if enable_agents.get("syntax", True):
-            self.agents.append(SyntaxLogicAgent(self.config))
-        if enable_agents.get("security", True):
-            self.agents.append(SecurityAgent(self.config))
-        if enable_agents.get("performance", True):
-            self.agents.append(PerformanceAgent(self.config))
-        if enable_agents.get("architecture", True):
-            self.agents.append(ArchitectureAgent(self.config))
-        if enable_agents.get("testing", True):
-            self.agents.append(TestingAgent(self.config))
-        if enable_agents.get("documentation", True):
-            self.agents.append(DocumentationAgent(self.config))
-        
+        self.graph = CodeReviewGraph()
         self.reviews = []
     
-    def add_line_numbers(self, code: str) -> Tuple[str, Dict[int, str]]:
-        """Add line numbers to code for reference"""
-        lines = code.split('\n')
-        numbered_lines = {}
-        numbered_code = []
-        
-        for i, line in enumerate(lines, 1):
-            numbered_lines[i] = line
-            numbered_code.append(f"{i:4d} | {line}")
-        
-        return '\n'.join(numbered_code), numbered_lines
-    
     def review_code(self, code: str, filename: str = "code.py") -> Dict[str, Any]:
+        """Run code review using LangGraph workflow"""
         print(f"\n🔍 Starting code review for: {filename}")
         print("=" * 60)
+
+        start_time = time.time()
+
+        stages = [
+            "Initializing review...",
+            "Running syntax & logic analysis...",
+            "Running security & performance analysis (parallel)...",
+            "Running architecture & testing analysis (parallel)...",
+            "Analyzing documentation...",
+            "Generating report..."
+        ]
+
+        print(f"[{'░' * 10}] {stages[0]}", end="\r", flush=True)
+
+        state = self.graph.review_code(code, filename)
+
+        for i in range(1, 6):
+            progress = "█" * (i * 2) + "░" * ((5 - i) * 2)
+            if i < len(stages):
+                print(f"\r[{progress}] {stages[i]}", end="", flush=True)
+            time.sleep(0.1)  
         
-        # Add line numbers for reference
-        numbered_code, line_map = self.add_line_numbers(code)
+        print(f"\r[{'█' * 10}] Review complete! (6 agents)")
+        print("=" * 60)
+
+        results = self._state_to_results(state, filename)
+        self.reviews.append(results)
         
-        results = {
+        return results
+    
+    def _state_to_results(self, state: ReviewState, filename: str) -> Dict[str, Any]:
+        """Convert LangGraph state to legacy results format"""
+        numbered_lines = []
+        for i, line in enumerate(state["code_lines"], 1):
+            numbered_lines.append(f"{i:4d} | {line}")
+        numbered_code = '\n'.join(numbered_lines)
+
+        reviews = []
+        agent_findings = {}
+        
+        for finding in state["findings"]:
+            agent = finding["agent"]
+            if agent not in agent_findings:
+                agent_findings[agent] = []
+            agent_findings[agent].append(finding)
+
+        for agent_name, summary in state["agent_summaries"].items():
+            feedback_lines = []
+            if agent_name in agent_findings:
+                feedback_lines.append(f"Found {len(agent_findings[agent_name])} issues:\n")
+                for i, finding in enumerate(agent_findings[agent_name], 1):
+                    feedback_lines.append(f"{i}. {finding['issue']}")
+                    if finding['fix']:
+                        feedback_lines.append(f"   {finding['fix']}")
+            else:
+                feedback_lines.append("No issues found.")
+            
+            reviews.append({
+                "agent": f"{agent_name} Agent",
+                "role": f"{agent_name.lower()} specialist",
+                "feedback": "\n".join(feedback_lines),
+                "timestamp": datetime.now().isoformat()
+            })
+        
+        return {
             "filename": filename,
             "timestamp": datetime.now().isoformat(),
-            "code_length": len(code.splitlines()),
-            "reviews": [],
+            "code_length": len(state["code_lines"]),
+            "reviews": reviews,
             "numbered_code": numbered_code,
             "summary": {
-                "total_issues": 0,
-                "critical_issues": 0,
-                "warnings": 0,
-                "suggestions": 0,
-                "by_agent": {}
+                "total_issues": state["total_issues"],
+                "critical_issues": state["critical_issues"],
+                "warnings": state["warnings"],
+                "suggestions": state["suggestions"],
+                "by_agent": state["issues_by_agent"]
             }
         }
-        
-        # Progress bar setup
-        total_agents = len(self.agents)
-        
-        for idx, agent in enumerate(self.agents, 1):
-            progress = "█" * (idx * 10 // total_agents) + "░" * ((total_agents - idx) * 10 // total_agents)
-            print(f"\r[{progress}] Running {agent.name}... ({idx}/{total_agents})", end="", flush=True)
-            
-            try:
-                review = agent.review(code)
-                results["reviews"].append(review)
-                
-                # Analyze severity of feedback
-                severity = analyze_severity(review.get("feedback", ""))
-                results["summary"]["critical_issues"] += severity.get("critical", 0)
-                results["summary"]["warnings"] += severity.get("warning", 0)
-                results["summary"]["suggestions"] += severity.get("suggestion", 0)
-                results["summary"]["total_issues"] += sum(severity.values())
-                
-                # Count issues by agent type
-                agent_type = agent.name.replace(" Agent", "")
-                if agent_type not in results["summary"]["by_agent"]:
-                    results["summary"]["by_agent"][agent_type] = 0
-                
-                # Count number of issues found
-                feedback = review.get("feedback", "")
-                issue_count = count_issues_in_feedback(feedback)
-                results["summary"]["by_agent"][agent_type] = issue_count
-                
-            except Exception as e:
-                results["reviews"].append({
-                    "agent": agent.name,
-                    "error": str(e)
-                })
-        
-        print(f"\r[{'█' * 10}] Review complete! ({total_agents}/{total_agents})")
-        print("=" * 60)
-        
-        self.reviews.append(results)
-        return results
     
     def save_results(self, results: Dict[str, Any], output_file: str = "ReviewResults.json"):
         """Save results as JSON"""
@@ -130,126 +108,114 @@ class CodeReviewCouncil:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             output_file = f"{base_name}_review_{timestamp}.txt"
         
+        # Get the report from the graph state
+        if hasattr(self, '_last_state') and self._last_state.get("final_report"):
+            report_content = self._last_state["final_report"]
+        else:
+            # Fallback to generating from results
+            report_content = self._generate_report_from_results(results)
+        
         with open(output_file, 'w', encoding='utf-8') as f:
-            # Header (more concise)
-            f.write("=" * 80 + "\n")
-            f.write(f"CODE REVIEW REPORT - {results['filename']}\n")
-            f.write("=" * 80 + "\n")
-            f.write(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-            f.write(f"Lines: {results['code_length']} | Model: Claude 3.5 Haiku\n")
-            f.write("=" * 80 + "\n\n")
-            
-            # Summary (compact)
-            summary = results.get("summary", {})
-            by_agent = summary.get("by_agent", {})
-            
-            # Only show summary if there are issues
-            total_issues = sum(by_agent.values())
-            if total_issues > 0:
-                f.write(f"SUMMARY: {total_issues} issues found\n")
-                f.write("-" * 40 + "\n")
-                
-                # Issues by type in one line
-                issue_summary = " | ".join([f"{agent}: {count}" for agent, count in by_agent.items() if count > 0])
-                f.write(f"{issue_summary}\n")
-                
-                # Severity in one line
-                severity_parts = []
-                if summary.get('critical_issues', 0) > 0:
-                    severity_parts.append(f"Critical: {summary['critical_issues']}")
-                if summary.get('warnings', 0) > 0:
-                    severity_parts.append(f"Warnings: {summary['warnings']}")
-                if summary.get('suggestions', 0) > 0:
-                    severity_parts.append(f"Suggestions: {summary['suggestions']}")
-                
-                if severity_parts:
-                    f.write(f"{' | '.join(severity_parts)}\n")
-                
-                f.write("\n" + "=" * 80 + "\n\n")
-            
-            # Detailed reviews - only agents with actual issues
-            f.write("DETAILED FINDINGS:\n")
-            f.write("=" * 80 + "\n")
-            
-            for review in results["reviews"]:
-                if "error" in review:
-                    continue  # Skip errors
-                    
-                agent_name = review['agent']
-                feedback = review.get('feedback', '').strip()
-                
-                # Skip if no real issues found
-                if not feedback or "no issues found" in feedback.lower() or "no errors found" in feedback.lower():
-                    continue
-                
-                # Skip agents that only have generic responses
-                if all(phrase in feedback.lower() for phrase in ["comprehensive", "review"]) and len(feedback) < 200:
-                    continue
-                
-                f.write(f"\n[{agent_name.upper()}]\n")
-                f.write("-" * 80 + "\n")
-                
-                # Write feedback without excessive formatting
-                # Remove multiple blank lines
-                lines = feedback.split('\n')
-                formatted_lines = []
-                prev_blank = False
-                
-                for line in lines:
-                    is_blank = not line.strip()
-                    if is_blank and prev_blank:
-                        continue  # Skip multiple blank lines
-                    formatted_lines.append(line)
-                    prev_blank = is_blank
-                
-                formatted_feedback = '\n'.join(formatted_lines)
-                f.write(formatted_feedback.strip() + "\n")
-            
-            # Footer
-            f.write("\n" + "=" * 80 + "\n")
-            f.write("END OF REPORT\n")
-            f.write("=" * 80 + "\n")
+            f.write(report_content)
         
         print(f"📝 Report saved to: {output_file}")
         return output_file
     
     def print_summary(self, results: Dict[str, Any]):
         """Print concise summary to terminal"""
+        # Get the summary from the graph state
+        if hasattr(self, '_last_state') and self._last_state.get("terminal_summary"):
+            print(self._last_state["terminal_summary"])
+        else:
+            # Fallback to generating from results
+            self._print_summary_from_results(results)
+    
+    def _generate_report_from_results(self, results: Dict[str, Any]) -> str:
+        """Generate report from results (fallback)"""
+        lines = []
+        lines.append("=" * 80)
+        lines.append(f"CODE REVIEW REPORT - {results['filename']}")
+        lines.append("=" * 80)
+        lines.append(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        lines.append(f"Lines: {results['code_length']} | Model: Claude 3.5 Haiku")
+        lines.append("=" * 80)
+        
+        summary = results.get("summary", {})
+        if summary.get("total_issues", 0) > 0:
+            lines.append(f"\nSUMMARY: {summary['total_issues']} issues found")
+            lines.append("-" * 40)
+            
+            # Issues by type
+            by_agent = summary.get("by_agent", {})
+            if by_agent:
+                issue_parts = [f"{agent}: {count}" for agent, count in by_agent.items() if count > 0]
+                lines.append(" | ".join(issue_parts))
+            
+            # Severity
+            severity_parts = []
+            if summary.get('critical_issues', 0) > 0:
+                severity_parts.append(f"Critical: {summary['critical_issues']}")
+            if summary.get('warnings', 0) > 0:
+                severity_parts.append(f"Warnings: {summary['warnings']}")
+            if summary.get('suggestions', 0) > 0:
+                severity_parts.append(f"Suggestions: {summary['suggestions']}")
+            lines.append(" | ".join(severity_parts))
+        
+        lines.append("\n" + "=" * 80)
+        lines.append("END OF REPORT")
+        lines.append("=" * 80)
+        
+        return "\n".join(lines)
+    
+    def _print_summary_from_results(self, results: Dict[str, Any]):
+        """Print summary from results (fallback)"""
         print("\n" + "=" * 60)
         print("📊 REVIEW SUMMARY")
         print("=" * 60)
         
-        # Summary stats
         summary = results.get("summary", {})
         print(f"\n📈 Total Issues Found: {summary.get('total_issues', 0)}")
         
+        # Issues by type
         print("\n🔍 Issues by Type:")
         by_agent = summary.get("by_agent", {})
-        for agent_type, count in by_agent.items():
-            icon = {
-                "Syntax & Logic": "🐛",
-                "Security": "🔒",
-                "Performance": "⚡",
-                "Architecture": "🏗️",
-                "Testing": "🧪",
-                "Documentation": "📝"
-            }.get(agent_type, "•")
-            print(f"   {icon} {agent_type}: {count} issues")
+        icons = {
+            "Syntax & Logic": "🐛",
+            "Security": "🔒",
+            "Performance": "⚡",
+            "Architecture": "🏗️",
+            "Testing": "🧪",
+            "Documentation": "📝"
+        }
         
+        for agent_type, count in by_agent.items():
+            icon = icons.get(agent_type, "•")
+            print(f"   {icon} {agent_type}: {count} issues")
+
         print("\n⚠️  Severity Breakdown:")
         print(f"   • Critical: {summary.get('critical_issues', 0)} 🔴")
         print(f"   • Warnings: {summary.get('warnings', 0)} 🟡")
         print(f"   • Suggestions: {summary.get('suggestions', 0)} 🟢")
         
-        print("\n💡 Key Findings:")
-        for review in results["reviews"]:
-            if "error" not in review:
-                agent_name = review['agent']
-                feedback = review.get('feedback', '')
-                # Extract actual finding instead of generic intro
-                key_finding = extract_key_finding(feedback)
-                print(f"   • {agent_name}: {key_finding}")
-        
         print("\n" + "=" * 60)
-        print("✅ Review complete! Check the detailed report for full analysis.")
+        print("✅ Review complete!")
         print("=" * 60)
+    
+    def review_code(self, code: str, filename: str = "code.py") -> Dict[str, Any]:
+        """Run code review using LangGraph workflow"""
+        print(f"\n🔍 Starting code review for: {filename}")
+        print("=" * 60)
+        
+        print("🔄 Executing review graph with parallel processing...")
+        
+        state = self.graph.review_code(code, filename)
+
+        self._last_state = state
+        
+        print("\n✅ Graph execution complete!")
+        print("=" * 60)
+        
+        results = self._state_to_results(state, filename)
+        self.reviews.append(results)
+        
+        return results
